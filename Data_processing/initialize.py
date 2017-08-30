@@ -12,6 +12,7 @@ import argparse
 from os.path import join, exists
 from os import mkdir,remove
 import time as tm
+import pandas as pd
 from sqlalchemy import types as sqltypes
 
 import data_processing as dp
@@ -82,6 +83,10 @@ if __name__ == '__main__':
     host = config.host
     database = config.database
 
+    new_date = config.new_date
+    new_taglist = config.new_tag_list
+
+
     db = dfsql.db_session(id, password, host, database)
 #####################################################################################################
 
@@ -99,13 +104,14 @@ if __name__ == '__main__':
         table_name = config.TableTitles[i]
         table_element = config.DbTable[table_name]
         DbTables[table_name] = config.get_table_frame(RTDB, table_name)
-        #a.to_csv('test%d.csv' %i)
         '''
+
 #####################################################################################################
 
 # 기존 RTDB 삭제
 # 없을 시 폴더 생성
 #####################################################################################################
+
     if not exists(save_dir):
         print("Make %s directory......" %save_dir)
         mkdir(save_dir)
@@ -113,6 +119,7 @@ if __name__ == '__main__':
         if exists(RTDB_file_name):
             print("Remove old RTDB file.....")
             remove(RTDB_file_name)
+
 #####################################################################################################
 
 # 기존 병합된 csv 파일 삭제
@@ -127,39 +134,31 @@ if __name__ == '__main__':
 # RTDB 생성
 #####################################################################################################
     start_time = tm.time()
+
     print("Make RTDB.....")
 
     files, tags = dp.getFileList(data_dir, split_files)
     RTDB = dp.parallel_processing(files, tags, start_date, end_date)
+    RTDB = dp.DataToNa(new_date, RTDB, new_taglist)
     RTDB.to_csv(RTDB_file_name)
 
     print("Complete making RTDB\n  --- %s seconds ---" % (tm.time() - start_time))
 
     start_time = tm.time()
     print("Make Database and Insert data.....")
+
 #####################################################################################################
 
 # DB용 dataframe 생성
 #####################################################################################################
-    #RTDB = pd.read_csv('.\RTDB\RTDB.csv', index_col=0)
+    RTDB = pd.read_csv('.\RTDB\RTDB.csv', index_col=0)
 
     DbTables = {}
 
     for i in range(config.Count):
         table_name = config.TableTitles[i]
-        #table_element = config.DbTable[table_name]
         DbTables[table_name] = config.get_table_frame(RTDB, table_name)
-        DbTables[table_name].to_sql(name=table_name, con=db, if_exists='replace',dtype={'tag_code' : sqltypes.TEXT, 'time' : sqltypes.DateTime, 'value' : sqltypes.Float})
+        DbTables[table_name].to_sql(name=table_name, con=db, if_exists='replace', dtype={'date': sqltypes.DateTime})
+        #DbTables[table_name].to_sql(name=table_name, con=db, if_exists='replace',dtype={'tag_code' : sqltypes.TEXT, 'time' : sqltypes.DateTime, 'value' : sqltypes.Float})
 #####################################################################################################
     print("Complete Making Database Table\n--- %s seconds ---" % (tm.time() - start_time))
-
-
-    # DB Table 생성
-#####################################################################################################
-    # Create table and insert data
-    '''
-    RTDB.to_sql(name=tablename, con=db, if_exists='replace')
-
-    print("Complete Making Database Table\n--- %s seconds ---" % (tm.time() - start_time))
-    '''
-#####################################################################################################

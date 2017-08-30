@@ -9,6 +9,9 @@ class ReadDBConfig:
     TableTitles = []
     DbTable = {}
     Count = 0
+
+    new_date = ''
+    new_tag_list = []
     cfg = None
 
     def __init__(self,path):
@@ -25,9 +28,13 @@ class ReadDBConfig:
         self.TableTitles = table_names.split(' ')
         self.Count = len(self.TableTitles)
 
+        self.new_date = self.cfg.get('DATA', 'new_date')
+        new_tag = self.cfg.get('DATA', 'new_tag')
+        self.new_tag_list = new_tag.split(' ')
+
         for table in self.TableTitles:
             self.DbTable[table] = self.cfg.get(section, table).split(' ')
-
+    '''
     def get_table_frame(self, RTDB, table_name):
         df = []
         table_elements = self.DbTable[table_name]
@@ -40,6 +47,17 @@ class ReadDBConfig:
 
         final_df = pd.concat(df, keys=table_elements).reset_index(level = 0).reset_index(drop=True)
         final_df.columns = ['tag_code', 'time', 'value']
+        print(final_df)
+
+        return final_df
+        '''
+
+    def get_table_frame(self, RTDB, table_name):
+        table_elements = self.DbTable[table_name]
+
+        final_df = RTDB[table_elements].reset_index()
+
+        final_df.columns = ['date'] + table_elements
         print(final_df)
 
         return final_df

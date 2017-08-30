@@ -8,6 +8,7 @@ import numpy as np
 from os.path import join, basename, splitext, exists
 import glob
 from datetime import date, time, timedelta
+import time as tm
 from datetime import datetime as dt
 from multiprocessing import Process, Queue
 import calendar
@@ -83,17 +84,39 @@ def getDataFrame(files, tags, ix, queue):
     df['date'] = df['date'].apply(lambda x: dt.combine(date(int("20" + x[7:9]), abbr_to_num[x[3:6]], int(x[:2])),
                                                              time(int(x[10:12]), int(x[13:15]), 0)))
 
+    '''
+    * Digital State 처리 section
+    * Digital State가 해당 Day에 오직 첫번째 row에만 있는 것은 바꾸지 않는다.
+    '''
+    for tag in tags:
+        new_df = df.loc[tag]                     # Multi Indexing을 사용하였기에 tag별로 처리한다
+        data_group = new_df.groupby('date')     # Date 단위로 grouping 한다.
+
+        # 해당 Day의 첫번째 값이 Digital State이고 Distinct elements가 2개 이상인 Day만 Select 한다.
+        ds = (data_group.data.first() == 'Digital State') & (data_group.data.nunique() > 1)     #Boolean type
+        digital_date = pd.DataFrame(ds[ds.values]).reset_index()['date']    # Date type
+
+        if len(digital_date) == 0:  # 해당 Tag에 Digital State가 없다면 Pass 한다.
+            continue
+        else:
+            for i in range(len(digital_date)):
+                mask = (df.loc[tag, 'date'] == digital_date[i])     #Digital State가 있는 Day를 masking 한다.
+                idx = np.where(mask)[0].tolist()                     #Masking 한 Index를 찾는다.
+
+                # 해당 Day의 모든 값들을 Digital State 다음의 distinct 값으로 대체한다.
+                df.loc[(tag, idx), 'data'] = \
+                    new_df.loc[new_df['date'] == digital_date[i], 'data'].unique().tolist()[1]
 
 
-    df['data'] = df['data'].apply(lambda x: np.nan if x == 'Digital State' else x)
-    # change data type to float
-    df['data'].apply(lambda x: float(x))
-
-
+    # Digital State로 유지했던(첫번째 row만 Digital State, 즉 distinct 값 한개) row를 Nan으로 바꾼다.
+    df['data'] = df['data'].apply(lambda x: float(x) if x != 'Digital State' else x)
 
     # Pad Nan elements before bfill
     df = pd.concat((df.loc[tag,].drop_duplicates(subset='date', keep='first').set_index('date').reindex(ix).
                    reset_index().fillna(method='pad').fillna(method='bfill') for tag in tags), keys=tags)
+
+    df['data'] = df['data'].apply(lambda x: np.nan if x == 'Digital State' else x)
+
 
     df = pd.concat((df.loc[tag, "data"] for tag in tags), axis=1, keys=tags).set_index(ix)
     df = df[:len(df) - 1]
@@ -173,6 +196,12 @@ def parallel_processing(files, tags, start_date, end_date):
 
 
     return final_df
+
+def DataToNa(date, RTDB, tag_list):
+    critical_date = dt.strptime(date, '%Y-%m-%d')
+    RTDB.loc[:critical_date,tag_list] = np.nan
+    return RTDB
+
 
 def concat_df(dfs):
     df = pd.concat((df for df in dfs), axis=1)
